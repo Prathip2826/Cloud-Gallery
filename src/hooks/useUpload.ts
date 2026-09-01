@@ -4,7 +4,7 @@ import { photosService } from '../services/photos';
 import confetti from 'canvas-confetti';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
 export function useUpload(onUploadSuccess?: () => void) {
   const [queue, setQueue] = useState<UploadQueueItem[]>([]);
@@ -21,11 +21,11 @@ export function useUpload(onUploadSuccess?: () => void) {
     const isAllowedExt = name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.webp');
 
     if (!ALLOWED_TYPES.includes(type) && !isAllowedExt) {
-      return 'Only JPG, PNG and WEBP images are supported.';
+      return 'Only JPEG, PNG and WEBP image formats are supported.';
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return 'Maximum file size is 10 MB.';
+      return 'File exceeds maximum limit of 25 MB.';
     }
 
     return null;
@@ -52,6 +52,21 @@ export function useUpload(onUploadSuccess?: () => void) {
     setQueue((prev) => [...prev, ...newItems]);
     setIsModalOpen(true);
   }, []);
+
+  const retryItem = (id: string) => {
+    setQueue((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: 'pending',
+              errorMessage: undefined,
+              progress: 0,
+            }
+          : item
+      )
+    );
+  };
 
   const removeQueueItem = (id: string) => {
     setQueue((prev) => prev.filter((item) => item.id !== id));
@@ -181,6 +196,7 @@ export function useUpload(onUploadSuccess?: () => void) {
     setIsModalOpen,
     addFiles,
     removeQueueItem,
+    retryItem,
     updateItemCaption,
     clearCompleted,
     clearAll,

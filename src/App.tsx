@@ -64,6 +64,7 @@ export function App() {
     setIsModalOpen: setIsUploadOpen,
     addFiles,
     removeQueueItem,
+    retryItem,
     updateItemCaption,
     clearCompleted,
     clearAll,
@@ -345,6 +346,7 @@ export function App() {
         isUploading={isUploading}
         onAddFiles={addFiles}
         onRemoveItem={removeQueueItem}
+        onRetryItem={retryItem}
         onUpdateCaption={updateItemCaption}
         onProcessQueue={processQueue}
         onClearCompleted={clearCompleted}

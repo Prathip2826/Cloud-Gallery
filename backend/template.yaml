@@ -8,7 +8,7 @@ Parameters:
   FirebaseProjectId:
     Type: String
     Description: 'Firebase Project ID for JWT verification in API Gateway'
-    Default: 'cloudgallery-hybrid-auth'
+    Default: 'gallery-f0dec'
 
 Globals:
   Function:

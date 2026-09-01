@@ -23,6 +23,7 @@ interface UploadModalProps {
   isUploading: boolean;
   onAddFiles: (files: FileList | File[]) => void;
   onRemoveItem: (id: string) => void;
+  onRetryItem?: (id: string) => void;
   onUpdateCaption: (id: string, caption: string) => void;
   onProcessQueue: () => void;
   onClearCompleted: () => void;
@@ -36,6 +37,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   isUploading,
   onAddFiles,
   onRemoveItem,
+  onRetryItem,
   onUpdateCaption,
   onProcessQueue,
   onClearCompleted,
@@ -192,30 +194,38 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
                         {(item.status === 'presigning' ||
                           item.status === 'uploading' ||
-                          item.status === 'confirming') && (
-                          <div className="flex items-center space-x-1 text-blue-600 text-xs font-semibold">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          item.status === 'confirming' ||
+                          item.status === 'processing') && (
+                          <div className="flex items-center space-x-1.5 text-blue-600 text-xs font-semibold">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
                             <span className="text-[11px]">
-                              {item.status === 'presigning'
-                                ? 'SigV4 Pre-signing...'
-                                : item.status === 'uploading'
-                                ? `S3 Uploading ${item.progress}%`
-                                : 'Lambda & Sharp...'}
+                              Uploading... {item.progress > 0 ? `${item.progress}%` : ''}
                             </span>
                           </div>
                         )}
 
                         {item.status === 'success' && (
                           <div className="flex items-center space-x-1 text-emerald-600 text-xs font-semibold">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            <span className="text-[11px]">Uploaded successfully</span>
+                            <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="text-[11px]">Upload successful</span>
                           </div>
                         )}
 
                         {item.status === 'error' && (
-                          <div className="flex items-center space-x-1 text-rose-600 text-xs font-semibold">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            <span className="text-[11px]">Upload failed</span>
+                          <div className="flex items-center space-x-1.5">
+                            <div className="flex items-center space-x-1 text-rose-600 text-xs font-semibold">
+                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="text-[11px]">Upload failed</span>
+                            </div>
+                            {onRetryItem && (
+                              <button
+                                type="button"
+                                onClick={() => onRetryItem(item.id)}
+                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer"
+                              >
+                                Try again
+                              </button>
+                            )}
                           </div>
                         )}
 
@@ -223,6 +233,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                           <button
                             onClick={() => onRemoveItem(item.id)}
                             className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                            title="Remove from queue"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
