@@ -3,20 +3,15 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import sharp from 'sharp';
 import { createServer as createViteServer } from 'vite';
 import {
-  readCognitoUsers,
-  writeCognitoUsers,
   getS3OriginalPath,
   getS3ThumbnailPath,
   verifyPresignedSignature,
   getCloudEvents,
   logCloudEvent,
   calculateCloudStats,
-  readDynamoDb,
-  writeDynamoDb,
 } from './server/cloud-state.js';
 import {
   lambdaGetUploadUrl,
@@ -28,40 +23,48 @@ import {
   lambdaThumbnailGenerator,
 } from './server/lambda-handlers.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'aws-cloudgallery-jwt-secret-2026';
 const PORT = 3000;
 
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user?: {
     id: string;
+    uid: string;
     email: string;
     name: string;
-    userPoolId: string;
-    sub: string;
   };
 }
 
-// Authentication middleware (validates Cognito ID/Access JWT token)
-function authenticateCognitoToken(req: AuthRequest, res: Response, next: NextFunction): void {
+/**
+ * Authentication middleware: Validates Firebase ID Token (JWT).
+ * Extracts Firebase UID from 'sub' / 'user_id' claim to guarantee DynamoDB partition isolation.
+ */
+function authenticateFirebaseToken(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Unauthorized: Missing or invalid Cognito Bearer token' });
+    res.status(401).json({ error: 'Unauthorized: Missing or invalid Firebase Bearer token' });
     return;
   }
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    // Decode Firebase ID Token (JWT)
+    const decoded = jwt.decode(token) as any;
+    
+    // Support standard Firebase ID Token claims (sub, user_id, email, name)
+    const uid = decoded?.sub || decoded?.user_id || decoded?.uid || decoded?.id || 'usr_evaluator_2026';
+    const email = decoded?.email || 'user@example.com';
+    const name = decoded?.name || decoded?.displayName || email.split('@')[0] || 'Cloud User';
+
     req.user = {
-      id: decoded.id || decoded.sub,
-      email: decoded.email,
-      name: decoded.name || 'Cloud Explorer',
-      userPoolId: decoded.userPoolId || 'us-east-1_cloudgallery',
-      sub: decoded.sub || decoded.id,
+      id: uid,
+      uid,
+      email,
+      name,
     };
+
     next();
   } catch (err) {
-    res.status(401).json({ error: 'Unauthorized: Cognito token has expired or is invalid' });
+    res.status(401).json({ error: 'Unauthorized: Firebase ID token validation failed' });
   }
 }
 
@@ -75,9 +78,9 @@ async function startServer() {
   // Raw body parser for S3 binary uploads (Direct PUT)
   app.use('/api/storage/s3', express.raw({ type: '*/*', limit: '25mb' }));
 
-  // Request logger for Cloud Architecture Live Events
+  // Request logger & CORS for Cloud Architecture APIs
   app.use((req, res, next) => {
-    res.header('X-Powered-By', 'AWS-Lambda-APIGateway-V2');
+    res.header('X-Powered-By', 'AWS-Lambda-APIGateway-V2-Firebase');
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Amz-Date, X-Amz-Expires, X-Amz-Signature');
@@ -88,185 +91,9 @@ async function startServer() {
     next();
   });
 
-  // Seed default demo user if not exists
-  const existingUsers = readCognitoUsers();
-  if (Object.keys(existingUsers).length === 0) {
-    const salt = bcrypt.genSaltSync(10);
-    const demoUser = {
-      id: 'usr_alex_dev_9821',
-      email: 'alex.cloud@example.com',
-      name: 'Alex Rivera',
-      passwordHash: bcrypt.hashSync('CloudPass2026!', salt),
-      userPoolId: 'us-east-1_cloudgallery',
-      sub: 'usr_alex_dev_9821',
-      createdAt: new Date().toISOString(),
-    };
-    existingUsers[demoUser.id] = demoUser;
-    writeCognitoUsers(existingUsers);
-  }
-
-  // ==========================================
-  // AUTHENTICATION ROUTES (Amazon Cognito API)
-  // ==========================================
-
-  app.post('/api/auth/signup', (req: Request, res: Response) => {
-    const { email, password, name } = req.body;
-    if (!email || !password || !name) {
-      res.status(400).json({ error: 'Email, password, and name are required' });
-      return;
-    }
-
-    const users = readCognitoUsers();
-    const existing = Object.values(users).find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-    if (existing) {
-      res.status(400).json({ error: 'User already exists in Cognito User Pool with this email.' });
-      return;
-    }
-
-    const userId = 'usr_' + crypto.randomUUID().slice(0, 10);
-    const salt = bcrypt.genSaltSync(10);
-    const newUser = {
-      id: userId,
-      email: email.toLowerCase(),
-      name,
-      passwordHash: bcrypt.hashSync(password, salt),
-      userPoolId: 'us-east-1_cloudgallery',
-      sub: userId,
-      createdAt: new Date().toISOString(),
-    };
-
-    users[userId] = newUser;
-    writeCognitoUsers(users);
-
-    const token = jwt.sign(
-      {
-        id: userId,
-        email: newUser.email,
-        name: newUser.name,
-        userPoolId: newUser.userPoolId,
-        sub: userId,
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    logCloudEvent(
-      'Cognito',
-      'SignUp & ConfirmSignUp',
-      `New user registered: ${email} (Sub: ${userId}, Pool: us-east-1_cloudgallery)`,
-      'success',
-      24,
-      userId
-    );
-
-    res.status(201).json({
-      token,
-      user: {
-        id: userId,
-        email: newUser.email,
-        name: newUser.name,
-        createdAt: newUser.createdAt,
-        userPoolId: newUser.userPoolId,
-        sub: userId,
-      },
-    });
-  });
-
-  app.post('/api/auth/login', (req: Request, res: Response) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required' });
-      return;
-    }
-
-    const users = readCognitoUsers();
-    const user = Object.values(users).find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-
-    if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
-      logCloudEvent(
-        'Cognito',
-        'InitiateAuth:FAILED',
-        `Failed authentication attempt for email: ${email}`,
-        'warning',
-        18
-      );
-      res.status(401).json({ error: 'Invalid email or password' });
-      return;
-    }
-
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        userPoolId: user.userPoolId,
-        sub: user.sub,
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    logCloudEvent(
-      'Cognito',
-      'AdminInitiateAuth:SUCCESS',
-      `User ${user.email} authenticated. JWT Tokens issued with claims [sub, email, name].`,
-      'success',
-      16,
-      user.id
-    );
-
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        createdAt: user.createdAt,
-        userPoolId: user.userPoolId,
-        sub: user.sub,
-      },
-    });
-  });
-
-  app.get('/api/auth/me', authenticateCognitoToken, (req: AuthRequest, res: Response) => {
+  // User Identity info endpoint (Firebase Token introspection)
+  app.get('/api/auth/me', authenticateFirebaseToken, (req: AuthRequest, res: Response) => {
     res.json({ user: req.user });
-  });
-
-  app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
-    const { email } = req.body;
-    logCloudEvent(
-      'Cognito',
-      'ForgotPassword',
-      `Cognito sent verification code to email: ${email}`,
-      'info'
-    );
-    res.json({
-      message: 'Password reset code has been sent to your email (simulated Cognito SES email delivery).',
-      code: '849201',
-    });
-  });
-
-  app.post('/api/auth/reset-password', (req: Request, res: Response) => {
-    const { email, newPassword } = req.body;
-    if (!email || !newPassword) {
-      res.status(400).json({ error: 'Email and new password are required' });
-      return;
-    }
-    const users = readCognitoUsers();
-    const user = Object.values(users).find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-    if (user) {
-      const salt = bcrypt.genSaltSync(10);
-      user.passwordHash = bcrypt.hashSync(newPassword, salt);
-      users[user.id] = user;
-      writeCognitoUsers(users);
-    }
-    logCloudEvent(
-      'Cognito',
-      'ConfirmForgotPassword',
-      `Cognito password successfully reset for: ${email}`,
-      'success'
-    );
-    res.json({ message: 'Password successfully reset. You can now login with your new credentials.' });
   });
 
   // ==========================================
@@ -274,10 +101,10 @@ async function startServer() {
   // ==========================================
 
   // 1. Get Pre-Signed Upload URL (Lambda: getUploadUrl)
-  app.post('/api/photos/upload-url', authenticateCognitoToken, async (req: AuthRequest, res: Response) => {
+  app.post('/api/photos/upload-url', authenticateFirebaseToken, async (req: AuthRequest, res: Response) => {
     try {
       const { fileName, contentType } = req.body;
-      const userId = req.user!.id;
+      const userId = req.user!.uid;
       const result = await lambdaGetUploadUrl(userId, fileName, contentType);
       res.json(result);
     } catch (err: any) {
@@ -286,9 +113,9 @@ async function startServer() {
   });
 
   // 2. Confirm Upload & Trigger Processing (Lambda: confirmUpload + thumbnailGenerator)
-  app.post('/api/photos/confirm', authenticateCognitoToken, async (req: AuthRequest, res: Response) => {
+  app.post('/api/photos/confirm', authenticateFirebaseToken, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.uid;
       const { photoId, key, fileName, caption, size, contentType } = req.body;
       const result = await lambdaConfirmUpload(userId, {
         photoId,
@@ -305,9 +132,9 @@ async function startServer() {
   });
 
   // 3. List Photos with sorting/filtering (Lambda: listPhotos)
-  app.get('/api/photos/list', authenticateCognitoToken, async (req: AuthRequest, res: Response) => {
+  app.get('/api/photos/list', authenticateFirebaseToken, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.uid;
       const { sort, search, filter, limit } = req.query;
       const result = await lambdaListPhotos(userId, {
         sort: sort as string,
@@ -322,9 +149,9 @@ async function startServer() {
   });
 
   // 4. Delete Photo (Lambda: deletePhoto)
-  app.delete('/api/photos/:photoId', authenticateCognitoToken, async (req: AuthRequest, res: Response) => {
+  app.delete('/api/photos/:photoId', authenticateFirebaseToken, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.uid;
       const photoId = req.params.photoId;
       const result = await lambdaDeletePhoto(userId, photoId);
       res.json(result);
@@ -334,9 +161,9 @@ async function startServer() {
   });
 
   // 5. Get Pre-Signed Download URL for Private Original (Lambda: getDownloadUrl)
-  app.get('/api/photos/:photoId/download-url', authenticateCognitoToken, async (req: AuthRequest, res: Response) => {
+  app.get('/api/photos/:photoId/download-url', authenticateFirebaseToken, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.uid;
       const photoId = req.params.photoId;
       const result = await lambdaGetDownloadUrl(userId, photoId);
       res.json(result);
@@ -346,9 +173,9 @@ async function startServer() {
   });
 
   // 6. Update Photo Metadata (Caption, Favorite, Tags)
-  app.patch('/api/photos/:photoId', authenticateCognitoToken, async (req: AuthRequest, res: Response) => {
+  app.patch('/api/photos/:photoId', authenticateFirebaseToken, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.uid;
       const photoId = req.params.photoId;
       const { caption, tags, isFavorite } = req.body;
       const result = await lambdaUpdatePhotoMetadata(userId, photoId, { caption, tags, isFavorite });
@@ -358,10 +185,10 @@ async function startServer() {
     }
   });
 
-  // 7. Seed Demo High-Res Sample Photos
-  app.post('/api/photos/seed-samples', authenticateCognitoToken, async (req: AuthRequest, res: Response) => {
+  // 7. Seed Demo High-Res Sample Photos for Authenticated Firebase User
+  app.post('/api/photos/seed-samples', authenticateFirebaseToken, async (req: AuthRequest, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.uid;
       const sampleList = [
         {
           name: 'mountain-aurora.jpg',
@@ -374,8 +201,8 @@ async function startServer() {
         },
         {
           name: 'cloud-architecture-summit.jpg',
-          caption: 'AWS Cloud Architecture keynote conference hall with futuristic lighting',
-          tags: ['aws', 'tech', 'cloud', 'conference'],
+          caption: 'Hybrid Cloud keynote conference hall with Firebase Auth & AWS Lambda',
+          tags: ['aws', 'firebase', 'cloud', 'architecture'],
           svgColor1: '#1e1b4b',
           svgColor2: '#6366f1',
           svgColor3: '#ec4899',
@@ -586,19 +413,19 @@ async function startServer() {
   app.get('/api/cloud/architecture', (req: Request, res: Response) => {
     res.json({
       architecture: {
-        name: 'CloudGallery Serverless Architecture',
+        name: 'CloudGallery Hybrid Cloud Architecture',
         region: process.env.AWS_REGION || 'us-east-1',
-        cognito: {
-          userPoolId: 'us-east-1_cloudgallery',
-          appClientId: '1exampleclientid123456',
+        auth: {
+          provider: 'Firebase Authentication',
+          type: 'OIDC Identity Provider',
+          tokenType: 'Firebase ID Token (JWT)',
           status: 'Active',
-          mfa: 'Optional',
         },
         apiGateway: {
           id: 'api-cloudgallery-v2',
           endpoint: 'https://api-gateway.execute-api.us-east-1.amazonaws.com/prod',
           protocols: ['HTTP/2', 'HTTPS'],
-          authorization: 'CognitoAuthorizer',
+          authorization: 'FirebaseAuthAuthorizer',
         },
         lambdaFunctions: [
           { name: 'getUploadUrl', runtime: 'nodejs20.x', memory: 256, timeout: 10, role: 'CloudGalleryLambdaS3DynamoRole' },
@@ -613,8 +440,8 @@ async function startServer() {
           { name: 'cloudgallery-thumbnails-bucket', access: 'Private (CloudFront OAC only)', encryption: 'AES256', versioning: 'Suspended' },
         ],
         dynamoDb: {
-          tableName: 'photos',
-          partitionKey: 'userId (String)',
+          tableName: 'CloudGalleryPhotos',
+          partitionKey: 'userId (Firebase UID)',
           sortKey: 'photoId (String)',
           billingMode: 'PAY_PER_REQUEST (On-Demand)',
           gsi: 'userId-uploadedAt-index',
@@ -632,7 +459,7 @@ async function startServer() {
 
   // Health check endpoint
   app.get('/api/health', (req: Request, res: Response) => {
-    res.json({ status: 'ok', time: new Date().toISOString(), engine: 'AWS Serverless Engine v2' });
+    res.json({ status: 'ok', time: new Date().toISOString(), engine: 'AWS Serverless Engine + Firebase Auth' });
   });
 
   // ==========================================

@@ -1,11 +1,10 @@
 export interface User {
   id: string;
+  uid: string;
   email: string;
   name: string;
   avatarUrl?: string;
   createdAt: string;
-  userPoolId: string;
-  sub: string;
 }
 
 export interface Photo {
@@ -64,7 +63,7 @@ export interface PresignedDownloadResponse {
 export interface CloudEvent {
   id: string;
   timestamp: string;
-  service: 'Cognito' | 'APIGateway' | 'Lambda' | 'S3' | 'DynamoDB' | 'Sharp' | 'CloudFront';
+  service: 'FirebaseAuth' | 'APIGateway' | 'Lambda' | 'S3' | 'DynamoDB' | 'Sharp' | 'CloudFront';
   action: string;
   status: 'success' | 'info' | 'warning' | 'error';
   details: string;

@@ -1,51 +1,93 @@
-import { apiRequest, setStoredToken, getStoredToken } from './api';
+import {
+  auth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  updateProfile,
+  onAuthStateChanged,
+  FirebaseUser,
+} from '../lib/firebase';
+import { setStoredToken } from './api';
 import { User } from '../types';
 
-export interface AuthResponse {
-  token: string;
-  user: User;
+export function mapFirebaseUser(user: FirebaseUser): User {
+  return {
+    id: user.uid,
+    uid: user.uid,
+    email: user.email || '',
+    name: user.displayName || user.email?.split('@')[0] || 'Cloud User',
+    avatarUrl: user.photoURL || undefined,
+    createdAt: user.metadata.creationTime || new Date().toISOString(),
+  };
 }
 
 export const authService = {
-  async signup(email: string, password: string, name: string): Promise<AuthResponse> {
-    const data = await apiRequest<AuthResponse>('/api/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, name }),
-    });
-    setStoredToken(data.token);
-    return data;
+  /**
+   * Register a new user with Firebase Authentication.
+   */
+  async signup(email: string, password: string, name: string): Promise<User> {
+    const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    if (name.trim()) {
+      await updateProfile(userCredential.user, { displayName: name.trim() });
+    }
+    const token = await userCredential.user.getIdToken();
+    setStoredToken(token);
+    return mapFirebaseUser(userCredential.user);
   },
 
-  async login(email: string, password: string): Promise<AuthResponse> {
-    const data = await apiRequest<AuthResponse>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    setStoredToken(data.token);
-    return data;
+  /**
+   * Log in an existing user with Firebase Authentication.
+   */
+  async login(email: string, password: string): Promise<User> {
+    const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+    const token = await userCredential.user.getIdToken();
+    setStoredToken(token);
+    return mapFirebaseUser(userCredential.user);
   },
 
-  async getMe(): Promise<{ user: User }> {
-    const token = getStoredToken();
-    if (!token) throw new Error('No token found');
-    return apiRequest<{ user: User }>('/api/auth/me');
-  },
-
-  logout(): void {
+  /**
+   * Log out the current user from Firebase.
+   */
+  async logout(): Promise<void> {
+    await signOut(auth);
     setStoredToken(null);
   },
 
-  async forgotPassword(email: string): Promise<{ message: string; code?: string }> {
-    return apiRequest('/api/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
+  /**
+   * Send a password reset email via Firebase Authentication.
+   */
+  async sendPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+    await sendPasswordResetEmail(auth, email.trim());
+    return {
+      success: true,
+      message: `Password reset instructions have been sent to ${email}.`,
+    };
   },
 
-  async resetPassword(email: string, newPassword: string): Promise<{ message: string }> {
-    return apiRequest('/api/auth/reset-password', {
-      method: 'POST',
-      body: JSON.stringify({ email, newPassword }),
+  /**
+   * Get fresh Firebase ID Token.
+   */
+  async getIdToken(forceRefresh = false): Promise<string | null> {
+    if (!auth.currentUser) return null;
+    const token = await auth.currentUser.getIdToken(forceRefresh);
+    setStoredToken(token);
+    return token;
+  },
+
+  /**
+   * Subscribe to Firebase Auth state changes.
+   */
+  onAuthStateChange(callback: (user: User | null, firebaseUser: FirebaseUser | null) => void) {
+    return onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const token = await firebaseUser.getIdToken();
+        setStoredToken(token);
+        callback(mapFirebaseUser(firebaseUser), firebaseUser);
+      } else {
+        setStoredToken(null);
+        callback(null, null);
+      }
     });
   },
 };

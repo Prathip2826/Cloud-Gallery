@@ -4,17 +4,15 @@ import {
   Lock,
   Mail,
   ArrowRight,
-  ShieldCheck,
   Sparkles,
   AlertCircle,
   Loader2,
-  KeyRound,
-  CheckCircle2,
 } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (email: string, pass: string) => Promise<any>;
   onSwitchToSignup: () => void;
+  onSwitchToForgotPassword: () => void;
   onLoginAsDemo: () => Promise<any>;
   isLoading: boolean;
   error: string | null;
@@ -23,6 +21,7 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({
   onLogin,
   onSwitchToSignup,
+  onSwitchToForgotPassword,
   onLoginAsDemo,
   isLoading,
   error,
@@ -63,10 +62,10 @@ export const Login: React.FC<LoginProps> = ({
             <Cloud className="w-8 h-8" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            CLOUDGALLERY
+            CloudGallery
           </h2>
           <p className="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
-            Cloud-Based Photo Gallery & Management Platform
+            Your Memories. Securely in the Cloud.
           </p>
         </div>
 
@@ -101,7 +100,7 @@ export const Login: React.FC<LoginProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Cognito Email Address
+                Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -121,7 +120,13 @@ export const Login: React.FC<LoginProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   Password
                 </label>
-                <span className="text-[11px] text-slate-400 font-mono">Cognito SRP</span>
+                <button
+                  type="button"
+                  onClick={onSwitchToForgotPassword}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                >
+                  Forgot password?
+                </button>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -145,7 +150,7 @@ export const Login: React.FC<LoginProps> = ({
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  <span>Sign In with Cognito</span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -156,18 +161,13 @@ export const Login: React.FC<LoginProps> = ({
           <div className="mt-6 text-center text-xs text-slate-500">
             Don't have an account?{' '}
             <button
+              type="button"
               onClick={onSwitchToSignup}
               className="font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer"
             >
-              Create AWS Cognito Account
+              Create an account
             </button>
           </div>
-        </div>
-
-        {/* Security / Architecture footnote */}
-        <div className="mt-6 text-center text-xs text-slate-500 flex items-center justify-center space-x-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" />
-          <span>Secured by Amazon Cognito & S3 SigV4 Pre-signed URLs</span>
         </div>
       </div>
     </div>

@@ -23,10 +23,10 @@ const cloudEvents: CloudEvent[] = [
   {
     id: 'evt-init-1',
     timestamp: new Date(Date.now() - 60000).toISOString(),
-    service: 'Cognito',
-    action: 'UserPoolInitialized',
+    service: 'FirebaseAuth',
+    action: 'ProviderInitialized',
     status: 'success',
-    details: 'Amazon Cognito User Pool "us-east-1_cloudgallery" ready with email verification & MFA policies.',
+    details: 'Firebase Authentication initialized with OIDC ID Token issuer and user UID isolation.',
     requestId: 'req-' + crypto.randomUUID().slice(0, 8),
     latencyMs: 14,
   },

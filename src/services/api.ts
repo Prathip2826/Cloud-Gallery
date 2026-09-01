@@ -1,3 +1,5 @@
+import { auth } from '../lib/firebase';
+
 const TOKEN_KEY = 'cloudgallery_auth_token';
 
 // Support deployed AWS API Gateway Base URL if provided in environment variables
@@ -23,11 +25,29 @@ export function setStoredToken(token: string | null): void {
   }
 }
 
+/**
+ * Retrieves the active Firebase ID token (or stored fallback).
+ */
+export async function getFirebaseIdToken(): Promise<string | null> {
+  try {
+    if (auth.currentUser) {
+      const token = await auth.currentUser.getIdToken();
+      if (token) {
+        setStoredToken(token);
+        return token;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to retrieve fresh Firebase ID token:', e);
+  }
+  return getStoredToken();
+}
+
 export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getStoredToken();
+  const token = await getFirebaseIdToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -59,5 +79,5 @@ export async function apiRequest<T = any>(
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  return response.json() as Promise<T>;
 }

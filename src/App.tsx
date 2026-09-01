@@ -5,6 +5,7 @@ import { useUpload } from './hooks/useUpload';
 import { useCloudEvents } from './hooks/useCloudEvents';
 import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
+import { ForgotPassword } from './components/auth/ForgotPassword';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
 import { SearchBar } from './components/gallery/SearchBar';
@@ -18,8 +19,8 @@ import { ViewMode, Photo } from './types';
 import { Loader2, HardDrive, Image as ImageIcon, ShieldCheck, Zap } from 'lucide-react';
 
 export function App() {
-  const { user, isAuthenticated, isLoading: isAuthLoading, error: authError, login, signup, logout, loginAsDemo } = useAuth();
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const { user, isAuthenticated, isLoading: isAuthLoading, error: authError, login, signup, logout, resetPassword, loginAsDemo } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
   const [currentTab, setCurrentTab] = useState<string>('gallery');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [isOpenMobileSidebar, setIsOpenMobileSidebar] = useState(false);
@@ -70,12 +71,12 @@ export function App() {
     return (
       <div className="min-h-screen bg-[#F1F5F9] flex flex-col items-center justify-center text-slate-500 space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        <p className="text-xs font-mono">Authenticating with Amazon Cognito...</p>
+        <p className="text-xs font-mono">Initializing CloudGallery authentication...</p>
       </div>
     );
   }
 
-  // If not authenticated, render Login/Signup
+  // If not authenticated, render Login/Signup/ForgotPassword
   if (!isAuthenticated) {
     if (authMode === 'signup') {
       return (
@@ -87,10 +88,20 @@ export function App() {
         />
       );
     }
+    if (authMode === 'forgot-password') {
+      return (
+        <ForgotPassword
+          onResetPassword={resetPassword}
+          onSwitchToLogin={() => setAuthMode('login')}
+          isLoading={isAuthLoading}
+        />
+      );
+    }
     return (
       <Login
         onLogin={login}
         onSwitchToSignup={() => setAuthMode('signup')}
+        onSwitchToForgotPassword={() => setAuthMode('forgot-password')}
         onLoginAsDemo={loginAsDemo}
         isLoading={isAuthLoading}
         error={authError}
@@ -147,11 +158,11 @@ export function App() {
       case 'recent':
         return 'Photos uploaded within the last week.';
       case 'architecture':
-        return 'Cognito, API Gateway, Lambda, S3, DynamoDB, Sharp, CloudFront CDN.';
+        return 'Firebase Auth, API Gateway, Lambda, S3, DynamoDB, Sharp, CloudFront CDN.';
       case 'console':
         return 'Real-time telemetry and execution logs across all provisioned services.';
       case 'settings':
-        return 'Manage your Cognito identity, S3 buckets, and DynamoDB configuration.';
+        return 'Manage your Firebase account, S3 buckets, and DynamoDB configuration.';
       default:
         return 'Securely managed with AWS S3 & DynamoDB';
     }

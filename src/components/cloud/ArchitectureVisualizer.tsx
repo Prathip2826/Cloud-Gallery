@@ -30,31 +30,34 @@ export const ArchitectureVisualizer: React.FC<ArchitectureVisualizerProps> = ({
   const [viewTab, setViewTab] = useState<'diagram' | 'sam' | 'iam'>('diagram');
 
   const nodesInfo: Record<string, { title: string; service: string; desc: string; specs: string[]; code: string }> = {
-    cognito: {
-      title: 'Amazon Cognito User Pool',
-      service: 'Identity & Access Management',
-      desc: 'Manages user registration, email verification, password policies, and issues secure OIDC/OAuth2 JWT tokens with claims (sub, email).',
+    firebase: {
+      title: 'Firebase Authentication',
+      service: 'Identity & Access Management (OIDC)',
+      desc: 'Handles user registration, email/password login, password resets, and issues cryptographically signed Firebase ID tokens (JWT) with user UID claims.',
       specs: [
-        'UserPool ID: us-east-1_cloudgallery',
-        'App Client: cloudgallery-web-client',
-        'Token Expiry: 7 days with refresh flow',
-        'Authentication Flow: SRP & JWT Authorizer',
+        'Identity Provider: Firebase Authentication',
+        'Token: Firebase ID Token (JWT OIDC)',
+        'User Isolation: Firebase UID mapped as DynamoDB PK',
+        'Authentication Flow: Email/Password & Password Reset',
       ],
-      code: `// Amazon Cognito JWT Token Claims
+      code: `// Firebase Authentication ID Token Claims
 {
-  "sub": "usr_alex_dev_9821",
+  "iss": "https://securetoken.google.com/cloudgallery-hybrid-auth",
+  "aud": "cloudgallery-hybrid-auth",
+  "auth_time": 1756627200,
+  "user_id": "usr_alex_cloud_2026",
+  "sub": "usr_alex_cloud_2026",
   "email": "alex.cloud@example.com",
-  "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_cloudgallery",
-  "exp": 1756627200
+  "email_verified": true
 }`,
     },
     apigateway: {
       title: 'Amazon API Gateway (HTTP API v2)',
       service: 'Serverless Ingress Routing',
-      desc: 'Routes RESTful HTTP requests, validates Cognito JWT authorizer claims, handles CORS headers, and routes to appropriate AWS Lambda handlers.',
+      desc: 'Routes RESTful HTTP requests, validates Firebase ID token authorizer claims, handles CORS headers, and routes to appropriate AWS Lambda handlers.',
       specs: [
         'Protocol: HTTP/2 & HTTPS',
-        'Authorizer: CognitoAuthorizer (JWT)',
+        'Authorizer: Firebase JWT / Lambda Authorizer',
         'Endpoint: /api/photos/*',
         'Latency: < 15ms overhead',
       ],
@@ -63,10 +66,12 @@ export const ArchitectureVisualizer: React.FC<ArchitectureVisualizerProps> = ({
   Properties:
     Auth:
       Authorizers:
-        CognitoAuthorizer:
+        FirebaseAuthAuthorizer:
           IdentitySource: '$request.header.Authorization'
           JwtConfiguration:
-            issuer: !Sub 'https://cognito-idp.\${AWS::Region}.amazonaws.com/\${CognitoUserPool}'`,
+            issuer: 'https://securetoken.google.com/cloudgallery-hybrid-auth'
+            audience:
+              - 'cloudgallery-hybrid-auth'`,
     },
     lambda: {
       title: 'AWS Lambda Backend Functions',
@@ -300,21 +305,21 @@ await s3.send(new PutObjectCommand({
                 <ArrowDown className="w-4 h-4 animate-bounce" />
               </div>
 
-              {/* Level 2: Amazon Cognito */}
+              {/* Level 2: Firebase Authentication */}
               <div className="flex justify-center">
                 <button
-                  onClick={() => setSelectedNode('cognito')}
+                  onClick={() => setSelectedNode('firebase')}
                   className={`w-72 p-3 rounded-2xl border text-center transition-all cursor-pointer ${
-                    selectedNode === 'cognito'
-                      ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-400/30'
+                    selectedNode === 'firebase'
+                      ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-400/30'
                       : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="text-xs font-bold text-rose-600 flex items-center justify-center gap-1.5">
+                  <div className="text-xs font-bold text-amber-600 flex items-center justify-center gap-1.5">
                     <Lock className="w-4 h-4" />
-                    <span>Amazon Cognito User Pool</span>
+                    <span>Firebase Authentication</span>
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-0.5">JWT Auth & Multi-tenant Identity</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Firebase ID Token (JWT) & User UID Isolation</p>
                 </button>
               </div>
 
@@ -527,39 +532,72 @@ await s3.send(new PutObjectCommand({
           <pre className="p-4 bg-slate-900 text-slate-200 rounded-2xl border border-slate-800 text-xs font-mono overflow-x-auto max-h-[500px] leading-relaxed custom-scrollbar">
             <code>{`AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: CloudGallery Serverless Photo Platform
+Description: CloudGallery Serverless Photo Platform with Firebase Auth
+
+Parameters:
+  FirebaseAuthIssuer:
+    Type: String
+    Default: 'https://securetoken.google.com/cloudgallery-hybrid-auth'
+  FirebaseAuthAudience:
+    Type: String
+    Default: 'cloudgallery-hybrid-auth'
 
 Resources:
-  CognitoUserPool:
-    Type: AWS::Cognito::UserPool
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS']
+        AllowHeaders: ['Authorization', 'Content-Type']
+        AllowOrigins: ['*']
+
   OriginalsBucket:
     Type: AWS::S3::Bucket
     Properties:
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
   ThumbnailsBucket:
     Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+
   PhotosTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: CloudGalleryPhotos
       BillingMode: PAY_PER_REQUEST
       KeySchema:
-        - AttributeName: userId
+        - AttributeName: userId # Firebase UID Partition Key
           KeyType: HASH
-        - AttributeName: photoId
+        - AttributeName: photoId # Unique Photo ID Sort Key
           KeyType: RANGE
+
   GetUploadUrlFunction:
     Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/getUploadUrl/
+      Handler: index.handler
+      Runtime: nodejs20.x
+
   ThumbnailGeneratorFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: functions/thumbnailGenerator/
+      Handler: index.handler
+      Runtime: nodejs20.x
       Events:
         S3NewObjectEvent:
           Type: S3
           Properties:
             Bucket: !Ref OriginalsBucket
             Events: s3:ObjectCreated:*
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution`}</code>
           </pre>

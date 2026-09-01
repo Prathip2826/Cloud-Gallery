@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # CloudGallery - AWS SAM Automated Serverless Deployment Script
+# Hybrid Architecture: Firebase Auth + AWS API Gateway + Lambda + S3 + DynamoDB + CloudFront
 # ==============================================================================
 
 set -e
@@ -40,6 +41,7 @@ cd "$SCRIPT_DIR"
 
 STACK_NAME="${1:-cloudgallery-prod}"
 REGION="${AWS_REGION:-us-east-1}"
+FIREBASE_PROJECT="${FIREBASE_PROJECT_ID:-cloudgallery-hybrid-auth}"
 
 echo ""
 echo "🚀 Step 1: Building Serverless Application with AWS SAM..."
@@ -51,6 +53,7 @@ sam deploy \
   --stack-name "$STACK_NAME" \
   --region "$REGION" \
   --capabilities CAPABILITY_IAM \
+  --parameter-overrides FirebaseProjectId="$FIREBASE_PROJECT" \
   --resolve-s3 \
   --no-confirm-changeset \
   --no-fail-on-empty-changeset
@@ -64,8 +67,6 @@ OUTPUTS=$(aws cloudformation describe-stacks \
   --output json)
 
 API_URL=$(echo "$OUTPUTS" | grep -A 2 '"OutputKey": "ApiUrl"' | grep -o '"OutputValue": "[^"]*' | cut -d'"' -f4)
-USER_POOL_ID=$(echo "$OUTPUTS" | grep -A 2 '"OutputKey": "UserPoolId"' | grep -o '"OutputValue": "[^"]*' | cut -d'"' -f4)
-CLIENT_ID=$(echo "$OUTPUTS" | grep -A 2 '"OutputKey": "UserPoolClientId"' | grep -o '"OutputValue": "[^"]*' | cut -d'"' -f4)
 ORIGINAL_BUCKET=$(echo "$OUTPUTS" | grep -A 2 '"OutputKey": "OriginalBucketName"' | grep -o '"OutputValue": "[^"]*' | cut -d'"' -f4)
 THUMBNAIL_BUCKET=$(echo "$OUTPUTS" | grep -A 2 '"OutputKey": "ThumbnailBucketName"' | grep -o '"OutputValue": "[^"]*' | cut -d'"' -f4)
 DYNAMODB_TABLE=$(echo "$OUTPUTS" | grep -A 2 '"OutputKey": "DynamoDBTableName"' | grep -o '"OutputValue": "[^"]*' | cut -d'"' -f4)
@@ -76,8 +77,6 @@ echo ""
 echo "=========================================================="
 echo "🎉 AWS INFRASTRUCTURE DEPLOYED SUCCESSFULLY!"
 echo "=========================================================="
-echo "📍 UserPoolId          : $USER_POOL_ID"
-echo "📍 UserPoolClientId    : $CLIENT_ID"
 echo "📍 ApiUrl              : $API_URL"
 echo "📍 OriginalBucketName  : $ORIGINAL_BUCKET"
 echo "📍 ThumbnailBucketName : $THUMBNAIL_BUCKET"
@@ -91,15 +90,11 @@ echo "Writing frontend environment variables to $ENV_FILE..."
 cat <<EOF > "$ENV_FILE"
 # Generated automatically by CloudGallery AWS SAM Deployment Tool
 VITE_AWS_REGION="$REGION"
-VITE_COGNITO_USER_POOL_ID="$USER_POOL_ID"
-VITE_COGNITO_CLIENT_ID="$CLIENT_ID"
 VITE_API_BASE_URL="$API_URL"
 VITE_CLOUDFRONT_URL="$CLOUDFRONT_URL"
 
 # Server-side & Lambda Configuration
 AWS_REGION="$REGION"
-AWS_COGNITO_USER_POOL_ID="$USER_POOL_ID"
-AWS_COGNITO_CLIENT_ID="$CLIENT_ID"
 AWS_S3_ORIGINALS_BUCKET="$ORIGINAL_BUCKET"
 AWS_S3_THUMBNAILS_BUCKET="$THUMBNAIL_BUCKET"
 AWS_DYNAMODB_TABLE="$DYNAMODB_TABLE"

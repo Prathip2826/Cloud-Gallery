@@ -31,7 +31,7 @@ export const CloudConsoleView: React.FC<CloudConsoleViewProps> = ({
   const [filterService, setFilterService] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const services = ['all', 'Cognito', 'APIGateway', 'Lambda', 'S3', 'DynamoDB', 'Sharp', 'CloudFront'];
+  const services = ['all', 'FirebaseAuth', 'APIGateway', 'Lambda', 'S3', 'DynamoDB', 'Sharp', 'CloudFront'];
 
   const filteredEvents = events.filter((e) => {
     if (filterService !== 'all' && e.service !== filterService) return false;
@@ -48,8 +48,8 @@ export const CloudConsoleView: React.FC<CloudConsoleViewProps> = ({
 
   const getServiceBadgeColor = (service: CloudEvent['service']) => {
     switch (service) {
-      case 'Cognito':
-        return 'bg-rose-50 text-rose-600 border-rose-200';
+      case 'FirebaseAuth':
+        return 'bg-amber-50 text-amber-600 border-amber-200';
       case 'APIGateway':
         return 'bg-indigo-50 text-indigo-600 border-indigo-200';
       case 'Lambda':
@@ -81,7 +81,7 @@ export const CloudConsoleView: React.FC<CloudConsoleViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Real-time event traces from Cognito, API Gateway, Lambda, S3, DynamoDB, Sharp & CloudFront CDN.
+            Real-time event traces from Firebase Auth, API Gateway, Lambda, S3, DynamoDB, Sharp & CloudFront CDN.
           </p>
         </div>
 

@@ -2,7 +2,13 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   CloudGallery - Cloud-Based Photo Gallery & Management Platform
-  Full Serverless Infrastructure with Cognito, API Gateway, Lambda, S3, DynamoDB, Sharp & CloudFront.
+  Serverless Infrastructure with Firebase Auth, API Gateway, Lambda, S3, DynamoDB, Sharp & CloudFront CDN.
+
+Parameters:
+  FirebaseProjectId:
+    Type: String
+    Description: 'Firebase Project ID for JWT verification in API Gateway'
+    Default: 'cloudgallery-hybrid-auth'
 
 Globals:
   Function:
@@ -18,40 +24,11 @@ Globals:
         THUMBNAILS_BUCKET_NAME: !Ref ThumbnailsBucket
         DYNAMODB_TABLE_NAME: !Ref PhotosTable
         CLOUDFRONT_DOMAIN: !GetAtt CloudFrontDistribution.DomainName
+        FIREBASE_PROJECT_ID: !Ref FirebaseProjectId
 
 Resources:
   # ========================================================
-  # 1. AUTHENTICATION: Amazon Cognito User Pool & App Client
-  # ========================================================
-  CognitoUserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: cloudgallery-user-pool
-      AutoVerifiedAttributes:
-        - email
-      UsernameAttributes:
-        - email
-      Policies:
-        PasswordPolicy:
-          MinimumLength: 8
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: false
-          RequireUppercase: true
-
-  CognitoUserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      ClientName: cloudgallery-web-client
-      UserPoolId: !Ref CognitoUserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_USER_SRP_AUTH
-        - ALLOW_USER_PASSWORD_AUTH
-        - ALLOW_REFRESH_TOKEN_AUTH
-
-  # ========================================================
-  # 2. STORAGE: Amazon S3 Buckets (Originals & Thumbnails)
+  # 1. STORAGE: Amazon S3 Buckets (Originals & Thumbnails)
   # ========================================================
   OriginalsBucket:
     Type: AWS::S3::Bucket
@@ -88,12 +65,12 @@ Resources:
               SSEAlgorithm: AES256
 
   # ========================================================
-  # 3. DATABASE: Amazon DynamoDB Table
+  # 2. DATABASE: Amazon DynamoDB Table
   # ========================================================
   PhotosTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: photos
+      TableName: CloudGalleryPhotos
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: userId
@@ -118,7 +95,7 @@ Resources:
             ProjectionType: ALL
 
   # ========================================================
-  # 4. API GATEWAY: HTTP API with Cognito JWT Authorizer
+  # 3. API GATEWAY: HTTP API with Firebase OIDC JWT Authorizer
   # ========================================================
   HttpApi:
     Type: AWS::Serverless::HttpApi
@@ -130,15 +107,15 @@ Resources:
         AllowOrigins: ['*']
       Auth:
         Authorizers:
-          CognitoAuthorizer:
+          FirebaseAuthAuthorizer:
             IdentitySource: '$request.header.Authorization'
             JwtConfiguration:
-              issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+              issuer: !Sub 'https://securetoken.google.com/${FirebaseProjectId}'
               audience:
-                - !Ref CognitoUserPoolClient
+                - !Ref FirebaseProjectId
 
   # ========================================================
-  # 5. LAMBDA FUNCTIONS (Least Privilege IAM Policies)
+  # 4. LAMBDA FUNCTIONS (Least Privilege IAM Policies)
   # ========================================================
   GetUploadUrlFunction:
     Type: AWS::Serverless::Function
@@ -156,7 +133,7 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: FirebaseAuthAuthorizer
 
   ConfirmUploadFunction:
     Type: AWS::Serverless::Function
@@ -176,7 +153,7 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: FirebaseAuthAuthorizer
 
   ListPhotosFunction:
     Type: AWS::Serverless::Function
@@ -194,7 +171,7 @@ Resources:
             Method: GET
             ApiId: !Ref HttpApi
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: FirebaseAuthAuthorizer
 
   DeletePhotoFunction:
     Type: AWS::Serverless::Function
@@ -216,7 +193,7 @@ Resources:
             Method: DELETE
             ApiId: !Ref HttpApi
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: FirebaseAuthAuthorizer
 
   GetDownloadUrlFunction:
     Type: AWS::Serverless::Function
@@ -236,7 +213,7 @@ Resources:
             Method: GET
             ApiId: !Ref HttpApi
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: FirebaseAuthAuthorizer
 
   ThumbnailGeneratorFunction:
     Type: AWS::Serverless::Function
@@ -258,7 +235,7 @@ Resources:
             Events: s3:ObjectCreated:*
 
   # ========================================================
-  # 6. CDN: Amazon CloudFront Distribution (Thumbnail Edge)
+  # 5. CDN: Amazon CloudFront Distribution (Thumbnail Edge)
   # ========================================================
   CloudFrontOAC:
     Type: AWS::CloudFront::OriginAccessControl
@@ -312,12 +289,6 @@ Outputs:
   ApiUrl:
     Description: 'API Gateway endpoint URL'
     Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
-  UserPoolId:
-    Description: 'Cognito User Pool ID'
-    Value: !Ref CognitoUserPool
-  UserPoolClientId:
-    Description: 'Cognito App Client ID'
-    Value: !Ref CognitoUserPoolClient
   OriginalBucketName:
     Description: 'S3 Originals Bucket Name'
     Value: !Ref OriginalsBucket

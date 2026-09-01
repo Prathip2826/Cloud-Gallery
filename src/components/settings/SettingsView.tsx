@@ -48,10 +48,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, stats }) => {
             <p className="text-xs text-slate-500 font-mono">{user?.email}</p>
             <div className="flex items-center gap-2 mt-1">
               <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
-                Cognito Authenticated
+                Firebase Authenticated
               </span>
-              <span className="text-[11px] text-slate-400 font-mono">
-                User ID: {user?.id}
+              <span className="text-[11px] text-slate-500 font-mono">
+                Firebase UID: {user?.uid || user?.id}
               </span>
             </div>
           </div>

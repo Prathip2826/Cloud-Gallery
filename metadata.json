@@ -1,6 +1,6 @@
 {
   "name": "CloudGallery",
-  "description": "Cloud-Based Photo Gallery & Management Platform with real AWS S3, DynamoDB, Lambda, Cognito, and CloudFront architecture.",
+  "description": "Hybrid Cloud Photo Gallery & Management Platform with Firebase Authentication, AWS S3, DynamoDB, Lambda, and CloudFront architecture.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
