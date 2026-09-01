@@ -1,0 +1,335 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  CloudGallery - Cloud-Based Photo Gallery & Management Platform
+  Full Serverless Infrastructure with Cognito, API Gateway, Lambda, S3, DynamoDB, Sharp & CloudFront.
+
+Globals:
+  Function:
+    Timeout: 15
+    MemorySize: 256
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+        ORIGINALS_BUCKET_NAME: !Ref OriginalsBucket
+        THUMBNAILS_BUCKET_NAME: !Ref ThumbnailsBucket
+        DYNAMODB_TABLE_NAME: !Ref PhotosTable
+        CLOUDFRONT_DOMAIN: !GetAtt CloudFrontDistribution.DomainName
+
+Resources:
+  # ========================================================
+  # 1. AUTHENTICATION: Amazon Cognito User Pool & App Client
+  # ========================================================
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: cloudgallery-user-pool
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: cloudgallery-web-client
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # ========================================================
+  # 2. STORAGE: Amazon S3 Buckets (Originals & Thumbnails)
+  # ========================================================
+  OriginalsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'cloudgallery-originals-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: ['GET', 'PUT', 'HEAD']
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  ThumbnailsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'cloudgallery-thumbnails-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # ========================================================
+  # 3. DATABASE: Amazon DynamoDB Table
+  # ========================================================
+  PhotosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: photos
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: photoId
+          AttributeType: S
+        - AttributeName: uploadedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: photoId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: userId-uploadedAt-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: uploadedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # ========================================================
+  # 4. API GATEWAY: HTTP API with Cognito JWT Authorizer
+  # ========================================================
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: cloudgallery-api
+      CorsConfiguration:
+        AllowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
+        AllowHeaders: ['Content-Type', 'Authorization']
+        AllowOrigins: ['*']
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: '$request.header.Authorization'
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+              audience:
+                - !Ref CognitoUserPoolClient
+
+  # ========================================================
+  # 5. LAMBDA FUNCTIONS (Least Privilege IAM Policies)
+  # ========================================================
+  GetUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/getUploadUrl/
+      Handler: index.handler
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref OriginalsBucket
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /api/photos/upload-url
+            Method: POST
+            ApiId: !Ref HttpApi
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ConfirmUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/confirmUpload/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhotosTable
+        - S3ReadPolicy:
+            BucketName: !Ref OriginalsBucket
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /api/photos/confirm
+            Method: POST
+            ApiId: !Ref HttpApi
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListPhotosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/listPhotos/
+      Handler: index.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PhotosTable
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /api/photos/list
+            Method: GET
+            ApiId: !Ref HttpApi
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeletePhotoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/deletePhoto/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhotosTable
+        - S3CrudPolicy:
+            BucketName: !Ref OriginalsBucket
+        - S3CrudPolicy:
+            BucketName: !Ref ThumbnailsBucket
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /api/photos/{photoId}
+            Method: DELETE
+            ApiId: !Ref HttpApi
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetDownloadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/getDownloadUrl/
+      Handler: index.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PhotosTable
+        - S3ReadPolicy:
+            BucketName: !Ref OriginalsBucket
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /api/photos/{photoId}/download-url
+            Method: GET
+            ApiId: !Ref HttpApi
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ThumbnailGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/thumbnailGenerator/
+      Handler: index.handler
+      MemorySize: 1024
+      Timeout: 30
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref OriginalsBucket
+        - S3CrudPolicy:
+            BucketName: !Ref ThumbnailsBucket
+      Events:
+        S3NewObjectEvent:
+          Type: S3
+          Properties:
+            Bucket: !Ref OriginalsBucket
+            Events: s3:ObjectCreated:*
+
+  # ========================================================
+  # 6. CDN: Amazon CloudFront Distribution (Thumbnail Edge)
+  # ========================================================
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: cloudgallery-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: 'CloudGallery Optimized Image CDN'
+        DefaultCacheBehavior:
+          TargetOriginId: S3ThumbnailOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: ['GET', 'HEAD', 'OPTIONS']
+          CachedMethods: ['GET', 'HEAD']
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        Origins:
+          - Id: S3ThumbnailOrigin
+            DomainName: !GetAtt ThumbnailsBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+            S3OriginConfig: {}
+
+  ThumbnailsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ThumbnailsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${ThumbnailsBucket}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+Outputs:
+  ApiUrl:
+    Description: 'API Gateway endpoint URL'
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  UserPoolId:
+    Description: 'Cognito User Pool ID'
+    Value: !Ref CognitoUserPool
+  UserPoolClientId:
+    Description: 'Cognito App Client ID'
+    Value: !Ref CognitoUserPoolClient
+  OriginalBucketName:
+    Description: 'S3 Originals Bucket Name'
+    Value: !Ref OriginalsBucket
+  ThumbnailBucketName:
+    Description: 'S3 Thumbnails Bucket Name'
+    Value: !Ref ThumbnailsBucket
+  DynamoDBTableName:
+    Description: 'DynamoDB Photos Table Name'
+    Value: !Ref PhotosTable
+  CloudFrontUrl:
+    Description: 'CloudFront CDN URL'
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  CloudFrontDomain:
+    Description: 'CloudFront CDN Domain'
+    Value: !GetAtt CloudFrontDistribution.DomainName
