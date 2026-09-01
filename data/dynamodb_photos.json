@@ -1,0 +1,22 @@
+{
+  "usr_google_test_verifier_99#ph_b14725f5-934": {
+    "userId": "usr_google_test_verifier_99",
+    "photoId": "ph_b14725f5-934",
+    "key": "usr_google_test_verifier_99/1788271271361-test-sunset.jpg",
+    "fileName": "test-sunset.jpg",
+    "caption": "Verified Test Sunset Photo",
+    "size": 981,
+    "contentType": "image/jpeg",
+    "uploadedAt": "2026-09-01T14:01:11.402Z",
+    "width": 400,
+    "height": 300,
+    "thumbnailKey": "usr_google_test_verifier_99/ph_b14725f5-934-thumb.webp",
+    "thumbnailUrl": "/api/cdn/thumbnails/usr_google_test_verifier_99%2Fph_b14725f5-934-thumb.webp",
+    "isFavorite": false,
+    "tags": [],
+    "etag": "b7bc7b2ce23fce6a9b20099f7e1bf978",
+    "s3BucketOriginal": "cloudgallery-originals-bucket",
+    "s3BucketThumbnail": "cloudgallery-thumbnails-bucket",
+    "cloudFrontUrl": "/api/cdn/thumbnails/usr_google_test_verifier_99%2Fph_b14725f5-934-thumb.webp"
+  }
+}
