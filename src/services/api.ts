@@ -1,4 +1,4 @@
-import { auth } from '../lib/firebase';
+import { auth, getAuthInstance } from '../lib/firebase';
 
 const TOKEN_KEY = 'cloudgallery_auth_token';
 
@@ -30,8 +30,9 @@ export function setStoredToken(token: string | null): void {
  */
 export async function getFirebaseIdToken(): Promise<string | null> {
   try {
-    if (auth.currentUser) {
-      const token = await auth.currentUser.getIdToken();
+    const authInst = getAuthInstance();
+    if (authInst && authInst.currentUser) {
+      const token = await authInst.currentUser.getIdToken();
       if (token) {
         setStoredToken(token);
         return token;

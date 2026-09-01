@@ -18,8 +18,8 @@ CLOUDGALLERY is an internship-grade, full-stack, enterprise-ready cloud photo ga
                            │
                       React Frontend
                            │
-                    Amazon Cognito
-                      Authentication
+                     Firebase Auth
+                     Authentication
                            │
                            ▼
                      API Gateway
@@ -54,7 +54,7 @@ CLOUDGALLERY is an internship-grade, full-stack, enterprise-ready cloud photo ga
 ## 🚀 Key Features
 
 1. **Enterprise Multi-Tenant Authentication**:
-   - Integrated with **Amazon Cognito User Pools**
+   - Integrated with **Firebase Authentication**
    - JWT validation at API Gateway authorizer level
    - Partition Key (`userId`) data isolation in DynamoDB
 
@@ -81,9 +81,9 @@ CLOUDGALLERY is an internship-grade, full-stack, enterprise-ready cloud photo ga
    - Secure original download via SigV4 GET pre-signed URLs
    - Hard deletion across S3 original, S3 thumbnail, and DynamoDB
 
-6. **AWS Cloud Architecture Visualizer & Live Stream**:
-   - Interactive SVG architecture map detailing every AWS node
-   - Live telemetry console showing Cognito, API Gateway, Lambda, S3, DynamoDB, and CloudFront event traces
+6. **Cloud Architecture Visualizer & Live Stream**:
+   - Interactive SVG architecture map detailing every cloud node
+   - Live telemetry console showing Firebase Auth, API Gateway, Lambda, S3, DynamoDB, and CloudFront event traces
 
 ---
 
@@ -92,7 +92,7 @@ CLOUDGALLERY is an internship-grade, full-stack, enterprise-ready cloud photo ga
 | Layer | Technologies |
 |---|---|
 | **Frontend** | React 18, TypeScript, Tailwind CSS, Lucide Icons, Vite |
-| **Authentication** | Amazon Cognito User Pools (JWT Authorizer) |
+| **Authentication** | Firebase Authentication (JWT OIDC Authorizer) |
 | **API Layer** | Amazon API Gateway HTTP API v2 |
 | **Compute** | AWS Lambda (Node.js 20.x, ARM64 Graviton3) |
 | **Image Processing** | Sharp (libvips C++ engine) |
@@ -107,8 +107,8 @@ CLOUDGALLERY is an internship-grade, full-stack, enterprise-ready cloud photo ga
 
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
-| `POST` | `/api/auth/signup` | Register new user in Cognito | No |
-| `POST` | `/api/auth/login` | Authenticate and obtain JWT token | No |
+| `POST` | `/api/auth/signup` | Register new user in Firebase Auth | No |
+| `POST` | `/api/auth/login` | Authenticate and obtain Firebase ID token | No |
 | `GET` | `/api/auth/me` | Retrieve current authenticated user profile | Yes |
 | `POST` | `/api/photos/upload-url` | Generate SigV4 Pre-signed S3 PUT URL | Yes |
 | `POST` | `/api/photos/confirm` | Record photo in DynamoDB and trigger thumbnail | Yes |

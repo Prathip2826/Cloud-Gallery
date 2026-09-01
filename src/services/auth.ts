@@ -1,10 +1,10 @@
 import {
   auth,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
+  getAuthInstance,
+  googleProvider,
+  isFirebaseConfigValid,
+  signInWithPopup,
   signOut,
-  sendPasswordResetEmail,
-  updateProfile,
   onAuthStateChanged,
   FirebaseUser,
 } from '../lib/firebase';
@@ -24,70 +24,145 @@ export function mapFirebaseUser(user: FirebaseUser): User {
 
 export const authService = {
   /**
-   * Register a new user with Firebase Authentication.
+   * Check if Firebase configuration is present and valid.
    */
-  async signup(email: string, password: string, name: string): Promise<User> {
-    const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-    if (name.trim()) {
-      await updateProfile(userCredential.user, { displayName: name.trim() });
-    }
-    const token = await userCredential.user.getIdToken();
-    setStoredToken(token);
-    return mapFirebaseUser(userCredential.user);
+  isConfigured(): boolean {
+    return isFirebaseConfigValid && Boolean(getAuthInstance());
   },
 
   /**
-   * Log in an existing user with Firebase Authentication.
+   * Primary authentication method: Sign in / Sign up with Google popup.
+   * Handles both new and returning users seamlessly.
    */
-  async login(email: string, password: string): Promise<User> {
-    const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-    const token = await userCredential.user.getIdToken();
-    setStoredToken(token);
-    return mapFirebaseUser(userCredential.user);
+  async loginWithGoogle(): Promise<User> {
+    const authInst = getAuthInstance();
+    if (!authInst || !isFirebaseConfigValid) {
+      throw new Error('Authentication configuration is incomplete.');
+    }
+
+    try {
+      const result = await signInWithPopup(authInst, googleProvider);
+      const token = await result.user.getIdToken();
+      setStoredToken(token);
+      return mapFirebaseUser(result.user);
+    } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.warn('[Firebase Auth] Google Sign-In caught error:', err);
+      }
+
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        throw new Error('Sign-in was cancelled.');
+      }
+      if (code === 'auth/popup-blocked') {
+        throw new Error('Popups are blocked by your browser. Please allow popups for Google Sign-In.');
+      }
+      if (code === 'auth/network-request-failed') {
+        throw new Error('Network connection error. Please check your internet connection and try again.');
+      }
+      if (
+        code === 'auth/invalid-api-key' ||
+        code === 'auth/api-key-not-valid' ||
+        code === 'auth/configuration-not-found' ||
+        code === 'auth/project-not-found'
+      ) {
+        throw new Error('Firebase configuration error. Please verify the project settings.');
+      }
+      if (code === 'auth/unauthorized-domain') {
+        throw new Error('This domain is not authorized in Firebase Authentication settings. Please add your preview URL to Authorized Domains in Firebase Console.');
+      }
+      if (code === 'auth/operation-not-allowed') {
+        throw new Error('Google sign-in provider is not enabled. Please enable Google provider in the Firebase Console under Authentication > Sign-in method.');
+      }
+
+      throw new Error(err?.message && !err.message.includes('Firebase:') ? err.message : 'Unable to sign in with Google. Please try again.');
+    }
   },
 
   /**
    * Log out the current user from Firebase.
    */
   async logout(): Promise<void> {
-    await signOut(auth);
+    const authInst = getAuthInstance();
+    if (authInst) {
+      try {
+        await signOut(authInst);
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn('[Firebase Auth] Sign out error:', err);
+        }
+      }
+    }
     setStoredToken(null);
-  },
-
-  /**
-   * Send a password reset email via Firebase Authentication.
-   */
-  async sendPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
-    await sendPasswordResetEmail(auth, email.trim());
-    return {
-      success: true,
-      message: `Password reset instructions have been sent to ${email}.`,
-    };
   },
 
   /**
    * Get fresh Firebase ID Token.
    */
   async getIdToken(forceRefresh = false): Promise<string | null> {
-    if (!auth.currentUser) return null;
-    const token = await auth.currentUser.getIdToken(forceRefresh);
-    setStoredToken(token);
-    return token;
+    const authInst = getAuthInstance();
+    if (!authInst || !authInst.currentUser) return null;
+    try {
+      const token = await authInst.currentUser.getIdToken(forceRefresh);
+      setStoredToken(token);
+      return token;
+    } catch {
+      return null;
+    }
   },
 
   /**
-   * Subscribe to Firebase Auth state changes.
+   * Subscribe to Firebase Auth state changes with comprehensive error handling.
    */
-  onAuthStateChange(callback: (user: User | null, firebaseUser: FirebaseUser | null) => void) {
-    return onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const token = await firebaseUser.getIdToken();
-        setStoredToken(token);
-        callback(mapFirebaseUser(firebaseUser), firebaseUser);
-      } else {
-        setStoredToken(null);
-        callback(null, null);
+  onAuthStateChange(
+    callback: (user: User | null, firebaseUser: FirebaseUser | null) => void,
+    onError?: (err: any) => void
+  ) {
+    const authInst = getAuthInstance();
+    if (!authInst) {
+      callback(null, null);
+      return () => {};
+    }
+
+    try {
+      return onAuthStateChanged(
+        authInst,
+        async (firebaseUser) => {
+          if (firebaseUser) {
+            try {
+              const token = await firebaseUser.getIdToken();
+              setStoredToken(token);
+            } catch (tokenErr) {
+              if (import.meta.env.DEV) {
+                console.warn('Failed to retrieve Firebase ID token:', tokenErr);
+              }
+            }
+            callback(mapFirebaseUser(firebaseUser), firebaseUser);
+          } else {
+            setStoredToken(null);
+            callback(null, null);
+          }
+        },
+        (error) => {
+          if (import.meta.env.DEV) {
+            console.warn('[Firebase Auth] Auth state listener observed note:', error);
+          }
+          if (onError) {
+            onError(error);
+          }
+          callback(null, null);
+        }
+      );
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.warn('Failed to register onAuthStateChanged:', err);
       }
-    });
+      if (onError) {
+        onError(err);
+      }
+      callback(null, null);
+      return () => {};
+    }
   },
 };
+

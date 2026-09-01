@@ -33,21 +33,21 @@ export const ArchitectureVisualizer: React.FC<ArchitectureVisualizerProps> = ({
     firebase: {
       title: 'Firebase Authentication',
       service: 'Identity & Access Management (OIDC)',
-      desc: 'Handles user registration, email/password login, password resets, and issues cryptographically signed Firebase ID tokens (JWT) with user UID claims.',
+      desc: 'Handles Google Sign-In authentication, session persistence, and issues cryptographically signed Firebase ID tokens (JWT) with user UID claims.',
       specs: [
-        'Identity Provider: Firebase Authentication',
+        'Identity Provider: Firebase Authentication (Google Sign-In)',
         'Token: Firebase ID Token (JWT OIDC)',
         'User Isolation: Firebase UID mapped as DynamoDB PK',
-        'Authentication Flow: Email/Password & Password Reset',
+        'Authentication Flow: Google Sign-In Popup',
       ],
       code: `// Firebase Authentication ID Token Claims
 {
-  "iss": "https://securetoken.google.com/cloudgallery-hybrid-auth",
-  "aud": "cloudgallery-hybrid-auth",
+  "iss": "https://securetoken.google.com/gallery-f0dec",
+  "aud": "gallery-f0dec",
   "auth_time": 1756627200,
-  "user_id": "usr_alex_cloud_2026",
-  "sub": "usr_alex_cloud_2026",
-  "email": "alex.cloud@example.com",
+  "user_id": "usr_google_auth_2026",
+  "sub": "usr_google_auth_2026",
+  "email": "user@example.com",
   "email_verified": true
 }`,
     },
@@ -69,9 +69,9 @@ export const ArchitectureVisualizer: React.FC<ArchitectureVisualizerProps> = ({
         FirebaseAuthAuthorizer:
           IdentitySource: '$request.header.Authorization'
           JwtConfiguration:
-            issuer: 'https://securetoken.google.com/cloudgallery-hybrid-auth'
+            issuer: 'https://securetoken.google.com/gallery-f0dec'
             audience:
-              - 'cloudgallery-hybrid-auth'`,
+              - 'gallery-f0dec'`,
     },
     lambda: {
       title: 'AWS Lambda Backend Functions',
@@ -537,10 +537,10 @@ Description: CloudGallery Serverless Photo Platform with Firebase Auth
 Parameters:
   FirebaseAuthIssuer:
     Type: String
-    Default: 'https://securetoken.google.com/cloudgallery-hybrid-auth'
+    Default: 'https://securetoken.google.com/gallery-f0dec'
   FirebaseAuthAudience:
     Type: String
-    Default: 'cloudgallery-hybrid-auth'
+    Default: 'gallery-f0dec'
 
 Resources:
   HttpApi:

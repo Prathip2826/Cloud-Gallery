@@ -40,9 +40,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, stats }) => {
       {/* User Profile Card */}
       <div className="p-6 rounded-3xl bg-white border border-slate-200 space-y-4 shadow-xs">
         <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-xl font-bold">
-            {user?.name?.charAt(0) || 'U'}
-          </div>
+          {user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={user?.name || 'User Profile'}
+              referrerPolicy="no-referrer"
+              className="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-sm"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-sm">
+              {user?.name?.charAt(0) || 'U'}
+            </div>
+          )}
           <div>
             <h3 className="text-lg font-bold text-slate-900">{user?.name}</h3>
             <p className="text-xs text-slate-500 font-mono">{user?.email}</p>

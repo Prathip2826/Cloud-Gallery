@@ -5,7 +5,6 @@ import { useUpload } from './hooks/useUpload';
 import { useCloudEvents } from './hooks/useCloudEvents';
 import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
-import { ForgotPassword } from './components/auth/ForgotPassword';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
 import { SearchBar } from './components/gallery/SearchBar';
@@ -19,8 +18,18 @@ import { ViewMode, Photo } from './types';
 import { Loader2, HardDrive, Image as ImageIcon, ShieldCheck, Zap } from 'lucide-react';
 
 export function App() {
-  const { user, isAuthenticated, isLoading: isAuthLoading, error: authError, login, signup, logout, resetPassword, loginAsDemo } = useAuth();
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
+  const {
+    user,
+    isAuthenticated,
+    isLoading: isAuthLoading,
+    isSigningIn,
+    error: authError,
+    loginWithGoogle,
+    logout,
+    isConfigured,
+    configStatus,
+  } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [currentTab, setCurrentTab] = useState<string>('gallery');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [isOpenMobileSidebar, setIsOpenMobileSidebar] = useState(false);
@@ -76,34 +85,25 @@ export function App() {
     );
   }
 
-  // If not authenticated, render Login/Signup/ForgotPassword
+  // If not authenticated, render Login / Signup (Both use Continue with Google flow)
   if (!isAuthenticated) {
     if (authMode === 'signup') {
       return (
         <Signup
-          onSignup={signup}
+          onLoginWithGoogle={loginWithGoogle}
           onSwitchToLogin={() => setAuthMode('login')}
           isLoading={isAuthLoading}
+          isSigningIn={isSigningIn}
           error={authError}
-        />
-      );
-    }
-    if (authMode === 'forgot-password') {
-      return (
-        <ForgotPassword
-          onResetPassword={resetPassword}
-          onSwitchToLogin={() => setAuthMode('login')}
-          isLoading={isAuthLoading}
         />
       );
     }
     return (
       <Login
-        onLogin={login}
+        onLoginWithGoogle={loginWithGoogle}
         onSwitchToSignup={() => setAuthMode('signup')}
-        onSwitchToForgotPassword={() => setAuthMode('forgot-password')}
-        onLoginAsDemo={loginAsDemo}
         isLoading={isAuthLoading}
+        isSigningIn={isSigningIn}
         error={authError}
       />
     );
@@ -246,7 +246,7 @@ export function App() {
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cloud Identity</p>
                   <p className="text-xl font-bold text-slate-900 truncate font-mono text-sm sm:text-base">
-                    Cognito ID: {user?.id?.slice(0, 10) || 'aws-user'}
+                    Firebase UID: {user?.id?.slice(0, 10) || 'user'}
                   </p>
                 </div>
               </div>
@@ -331,7 +331,7 @@ export function App() {
             </span>
             <span className="hidden sm:flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              Cognito Valid
+              Firebase Auth Valid
             </span>
           </div>
         </footer>

@@ -173,18 +173,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User Profile Footer */}
         <div className="mt-auto p-4 border-t border-slate-800 bg-slate-900/50 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 overflow-hidden flex-shrink-0">
-            {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-          </div>
+          {user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={user?.name || 'User'}
+              referrerPolicy="no-referrer"
+              className="w-10 h-10 rounded-full object-cover border border-slate-700 flex-shrink-0"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden flex-shrink-0 shadow-xs">
+              {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+            </div>
+          )}
           <div className="flex-1 overflow-hidden min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user?.name || 'Intern Candidate'}</p>
-            <p className="text-xs text-slate-500 truncate">{user?.email || 'dev.user@cloudgallery.io'}</p>
+            <p className="text-sm font-semibold text-white truncate">{user?.name || 'Cloud User'}</p>
+            <p className="text-xs text-slate-400 truncate font-mono">{user?.email || 'user@example.com'}</p>
           </div>
           <button
             id="sidebar-logout-btn"
             onClick={onLogout}
-            title="Log out from Cognito"
-            className="text-slate-500 hover:text-red-400 transition-colors p-1.5 rounded-lg cursor-pointer"
+            title="Sign out"
+            className="text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors p-2 rounded-lg cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
           </button>

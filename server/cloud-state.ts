@@ -9,7 +9,7 @@ const STORAGE_ROOT = path.join(process.cwd(), 'data');
 const S3_ORIGINALS_DIR = path.join(STORAGE_ROOT, 's3-originals-bucket');
 const S3_THUMBNAILS_DIR = path.join(STORAGE_ROOT, 's3-thumbnails-bucket');
 const DYNAMODB_FILE = path.join(STORAGE_ROOT, 'dynamodb_photos.json');
-const USERS_FILE = path.join(STORAGE_ROOT, 'cognito_users.json');
+const USERS_FILE = path.join(STORAGE_ROOT, 'firebase_users.json');
 
 // Ensure directories exist
 [STORAGE_ROOT, S3_ORIGINALS_DIR, S3_THUMBNAILS_DIR].forEach((dir) => {
@@ -108,19 +108,19 @@ export function writeDynamoDb(data: Record<string, Photo>) {
   fs.writeFileSync(DYNAMODB_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// Cognito Users helper
-export function readCognitoUsers(): Record<string, any> {
+// Firebase Users helper
+export function readFirebaseUsers(): Record<string, any> {
   try {
     if (fs.existsSync(USERS_FILE)) {
       return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
     }
   } catch (err) {
-    console.error('Error reading Cognito users:', err);
+    console.error('Error reading Firebase users:', err);
   }
   return {};
 }
 
-export function writeCognitoUsers(data: Record<string, any>) {
+export function writeFirebaseUsers(data: Record<string, any>) {
   fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 

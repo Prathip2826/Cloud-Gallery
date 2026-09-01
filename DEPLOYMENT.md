@@ -22,8 +22,8 @@ This script will:
 1. Validate your AWS CLI credentials and active profile
 2. Verify AWS SAM CLI installation
 3. Build the SAM template (`backend/template.yaml`) including TypeScript Lambda handlers and Sharp image processing layers
-4. Deploy the CloudFormation stack to AWS (Cognito, S3 Originals, S3 Thumbnails, DynamoDB, Lambda, API Gateway, CloudFront OAC)
-5. Automatically extract generated CloudFormation Outputs (API Endpoint, Cognito Pool ID, Cognito App Client ID, CloudFront CDN Domain)
+4. Deploy the CloudFormation stack to AWS (S3 Originals, S3 Thumbnails, DynamoDB, Lambda, API Gateway, CloudFront OAC)
+5. Automatically extract generated CloudFormation Outputs (API Endpoint, Original Bucket, Thumbnail Bucket, DynamoDB Table, CloudFront CDN Domain)
 6. Generate or update your frontend `.env` configuration file with the live AWS endpoints
 
 ---
@@ -89,13 +89,13 @@ Key                 ApiUrl
 Description         API Gateway endpoint URL
 Value               https://a1b2c3d4e5.execute-api.us-east-1.amazonaws.com
 
-Key                 UserPoolId
-Description         Cognito User Pool ID
-Value               us-east-1_AbCdEf123
+Key                 OriginalBucketName
+Description         Private S3 Originals Bucket
+Value               cloudgallery-originals-bucket
 
-Key                 UserPoolClientId
-Description         Cognito App Client ID
-Value               1a2b3c4d5e6f7g8h9i0jklmnop
+Key                 ThumbnailBucketName
+Description         Optimized S3 Thumbnails Bucket
+Value               cloudgallery-thumbnails-bucket
 
 Key                 CloudFrontDomain
 Description         CloudFront CDN Domain
@@ -104,12 +104,19 @@ Value               d123456abcdef8.cloudfront.net
 ```
 
 ### Step 5: Connect Frontend to Deployed AWS Backend
-Copy `.env.example` to `.env` in the root directory and populate it with the outputs:
+Copy `.env.example` to `.env` in the root directory and populate it with your Firebase Web App configuration and AWS outputs:
 
 ```env
+# Firebase Web App Configuration
+VITE_FIREBASE_API_KEY="AIzaSy..."
+VITE_FIREBASE_AUTH_DOMAIN="cloudgallery-app.firebaseapp.com"
+VITE_FIREBASE_PROJECT_ID="cloudgallery-app"
+VITE_FIREBASE_STORAGE_BUCKET="cloudgallery-app.appspot.com"
+VITE_FIREBASE_MESSAGING_SENDER_ID="123456789012"
+VITE_FIREBASE_APP_ID="1:123456789012:web:abcdef123456"
+
+# AWS Serverless Endpoints
 VITE_AWS_REGION="us-east-1"
-VITE_COGNITO_USER_POOL_ID="us-east-1_AbCdEf123"
-VITE_COGNITO_CLIENT_ID="1a2b3c4d5e6f7g8h9i0jklmnop"
 VITE_API_BASE_URL="https://a1b2c3d4e5.execute-api.us-east-1.amazonaws.com"
 VITE_CLOUDFRONT_URL="https://d123456abcdef8.cloudfront.net"
 ```
@@ -129,7 +136,7 @@ aws s3 sync dist/ s3://your-frontend-hosting-bucket/ --delete
 
 | Resource | Security Configuration | IAM Policy / Access Model |
 |---|---|---|
-| **Cognito User Pool** | SRP Password Policy, Auto-verified email, no client secret stored in client | Native JWT Claims verified by API Gateway |
+| **Firebase Auth** | Email/Password, secure token validation, user UID isolation | Standard OIDC JWT Tokens verified by API Gateway / Lambda |
 | **API Gateway HTTP API** | JWT Authorizer on all `/api/photos/*` routes | Passes `sub` and `email` claims directly to Lambda `requestContext` |
 | **S3 Originals Bucket** | `BlockPublicAcls=true`, `BlockPublicPolicy=true`, `SSE-S3 AES256` | Private: Uploads/downloads exclusively via SigV4 Pre-signed URLs |
 | **S3 Thumbnails Bucket** | Private bucket, no public access | Read access strictly restricted to CloudFront OAC Service Principal |
@@ -141,7 +148,7 @@ aws s3 sync dist/ s3://your-frontend-hosting-bucket/ --delete
 
 ## 🧪 Post-Deployment Verification
 
-1. **Sign Up & Login**: Register a test account in the web app. Verify that the user appears in the Amazon Cognito Console.
+1. **Sign Up & Login**: Register a test account in the web app. Verify that the user appears in the Firebase Authentication console.
 2. **Direct S3 Upload**: Upload a high-resolution photo. Verify that a SigV4 pre-signed PUT URL is generated and the browser uploads directly to S3.
 3. **S3 Event & Lambda Sharp Processing**: Check CloudWatch Logs for `ThumbnailGeneratorFunction` (`aws logs tail /aws/lambda/cloudgallery-prod-ThumbnailGeneratorFunction --follow`). Ensure an 800px WebP thumbnail is written to the thumbnails bucket.
 4. **DynamoDB Metadata**: Verify the new record in the DynamoDB `photos` table under your `userId` partition.

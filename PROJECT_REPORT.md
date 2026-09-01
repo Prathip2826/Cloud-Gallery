@@ -2,7 +2,7 @@
 
 **Project Title:** CloudGallery - Cloud-Based Photo Gallery & Digital Asset Management Platform  
 **Author:** Cloud Engineering Team  
-**Architecture:** AWS Serverless (Cognito, API Gateway, Lambda, S3, DynamoDB, CloudFront, Sharp)  
+**Architecture:** Hybrid Cloud Serverless (Firebase Auth, AWS API Gateway, Lambda, S3, DynamoDB, CloudFront, Sharp)  
 **Date:** March 2026  
 
 ---
@@ -14,7 +14,7 @@ CLOUDGALLERY is a production-grade, highly available, secure, and scalable cloud
 - Asynchronous, event-driven image thumbnail generation via AWS Lambda and Sharp.
 - Multi-tenant data segregation in Amazon DynamoDB using composite primary keys.
 - Global edge delivery through Amazon CloudFront CDN with Origin Access Control.
-- Secure, token-based identity lifecycle management with Amazon Cognito User Pools.
+- Secure, token-based identity lifecycle management with Firebase Authentication.
 
 ---
 
@@ -36,8 +36,8 @@ CLOUDGALLERY is a production-grade, highly available, secure, and scalable cloud
                            │
                       React Frontend
                            │
-                    Amazon Cognito
-                      Authentication
+                     Firebase Auth
+                     Authentication
                            │
                            ▼
                      API Gateway
@@ -70,9 +70,9 @@ CLOUDGALLERY is a production-grade, highly available, secure, and scalable cloud
 ### 3.1 End-to-End Workflow
 
 #### Phase 1: Authentication & Authorization
-1. User submits credentials to Amazon Cognito User Pool.
-2. Cognito validates credentials (SRP protocol) and issues a signed JWT ID/Access token.
-3. Client attaches `Authorization: Bearer <jwt_token>` to all downstream API calls.
+1. User submits credentials via Firebase Authentication SDK.
+2. Firebase validates credentials and issues a signed OIDC JWT ID token.
+3. Client attaches `Authorization: Bearer <firebase_id_token>` to all downstream API calls.
 
 #### Phase 2: Direct-to-S3 Upload Pipeline
 1. Frontend calls `POST /api/photos/upload-url` with file metadata (`fileName`, `contentType`, `fileSize`).
@@ -120,7 +120,7 @@ CLOUDGALLERY is a production-grade, highly available, secure, and scalable cloud
 - **Amazon S3**: 5GB free standard storage.
 - **Amazon DynamoDB**: 25GB free storage, 25 WCU / 25 RCU on-demand tier.
 - **Amazon CloudFront**: 1TB data transfer out per month.
-- **Amazon Cognito**: 50,000 monthly active users (MAU) free.
+- **Firebase Authentication**: Generous free tier (50,000 MAUs free).
 
 *Estimated running cost for up to 10,000 monthly active users is virtually $0.00.*
 

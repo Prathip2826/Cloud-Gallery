@@ -28,17 +28,16 @@ sam deploy --guided
 Follow the prompts:
 - **Stack Name**: `cloudgallery-prod`
 - **AWS Region**: `us-east-1`
-- **Parameter CognitoDomainPrefix**: `cloudgallery-app`
+- **Parameter FirebaseProjectId**: `cloudgallery-hybrid-auth` (or your Firebase Project ID)
 - **Confirm changes before deploy**: `Y`
 - **Allow SAM CLI IAM role creation**: `Y`
 
 SAM will provision:
-- Amazon Cognito User Pool & App Client
 - Amazon S3 Originals Bucket (Private)
 - Amazon S3 Thumbnails Bucket (Private)
 - Amazon DynamoDB `photos` Table
 - 6 AWS Lambda Functions (with Node.js 20 & Sharp)
-- Amazon API Gateway HTTP API v2 with Cognito Authorizer
+- Amazon API Gateway HTTP API v2 with Firebase JWT Authorizer
 - Amazon CloudFront Distribution with Origin Access Control (OAC)
 
 ---
@@ -86,18 +85,11 @@ SAM will provision:
 
 ---
 
-### Step 3: Create Amazon Cognito User Pool
-1. Open the **Cognito Console** (`https://console.aws.amazon.com/cognito`).
-2. Create User Pool:
-   - Sign-in options: **Email**
-   - Password policy: Minimum 8 characters, numbers, symbols
-   - Multi-factor authentication: Optional
-   - User pool name: `cloudgallery-user-pool`
-3. Create App Client:
-   - App client name: `cloudgallery-web-client`
-   - Client secret: **Don't generate a client secret** (for Single-Page Apps)
-   - Allowed OAuth flows: `Authorization code grant`, `Implicit grant`
-   - Scopes: `email`, `openid`, `profile`
+### Step 3: Configure Firebase Authentication
+1. Open the **Firebase Console** (`https://console.firebase.google.com`).
+2. Select your project and navigate to **Build > Authentication**.
+3. Enable **Email/Password** sign-in method under the Sign-in method tab.
+4. Copy your Web App configuration keys to your frontend `.env` (`VITE_FIREBASE_*`).
 
 ---
 
@@ -119,9 +111,9 @@ SAM will provision:
 ### Step 5: Configure Amazon API Gateway (HTTP API v2)
 1. Create HTTP API `cloudgallery-api`.
 2. Add JWT Authorizer:
-   - Name: `CognitoAuthorizer`
-   - Issuer: `https://cognito-idp.us-east-1.amazonaws.com/<YOUR_USER_POOL_ID>`
-   - Audience: `<YOUR_APP_CLIENT_ID>`
+   - Name: `FirebaseAuthAuthorizer`
+   - Issuer: `https://securetoken.google.com/<YOUR_FIREBASE_PROJECT_ID>`
+   - Audience: `<YOUR_FIREBASE_PROJECT_ID>`
 3. Add Routes with Authorizer:
    - `POST /api/photos/upload-url` -> `getUploadUrl`
    - `POST /api/photos/confirm` -> `confirmUpload`
@@ -142,7 +134,7 @@ SAM will provision:
 
 ## Verification Checklist
 
-- [ ] Users can sign up and receive Cognito tokens
+- [ ] Users can sign up and receive Firebase ID tokens
 - [ ] Pre-signed S3 PUT URL uploads directly from browser to S3
 - [ ] S3 event triggers Lambda and Sharp generates 800px WebP thumbnail
 - [ ] Metadata is queryable in DynamoDB under `userId`

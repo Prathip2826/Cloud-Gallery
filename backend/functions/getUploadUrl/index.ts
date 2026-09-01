@@ -10,6 +10,7 @@ interface APIGatewayEvent {
       jwt?: {
         claims?: {
           sub?: string;
+          user_id?: string;
           email?: string;
         };
       };
@@ -20,13 +21,13 @@ interface APIGatewayEvent {
 
 export const handler = async (event: APIGatewayEvent) => {
   try {
-    // Extract authenticated user ID from Cognito Authorizer claims (never trust frontend input)
-    const userId = event.requestContext?.authorizer?.jwt?.claims?.sub;
+    // Extract authenticated user ID from Firebase JWT Authorizer claims (never trust frontend input)
+    const userId = event.requestContext?.authorizer?.jwt?.claims?.sub || event.requestContext?.authorizer?.jwt?.claims?.user_id;
     if (!userId) {
       return {
         statusCode: 401,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ error: 'Unauthorized: Missing Cognito claims' }),
+        body: JSON.stringify({ error: 'Unauthorized: Missing Firebase Auth claims' }),
       };
     }
 
